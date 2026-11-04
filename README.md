@@ -2,12 +2,24 @@
 
 Python/Streamlit-MVP för att samla yrkesunderlag och prioritera **manuell granskning** av möjliga managementkonsulter. CSV, manuell inmatning och 15 helt fiktiva demoprofiler fungerar utan API-nyckel. Ingen automatiserad kontakt med kandidater eller automatiska anställningsbeslut.
 
+## GitHub Codespaces
+
+Projektet innehåller `.devcontainer/devcontainer.json` som väljer Python 3.12 och installerar beroendena automatiskt. Om en befintlig Codespace använder Python 3.14:
+
+1. Kör `git pull origin main` i terminalen.
+2. Tryck **Ctrl+Shift+P** (Mac: **Cmd+Shift+P**), skriv **Codespaces: Rebuild Container** och välj kommandot. Välj **Rebuild** om en bekräftelse visas.
+3. Vänta tills ombyggnad och installation är klara. En gammal inkompatibel `.venv` sparas i en ignorerad `.venv-backup-*`-mapp.
+4. Kör `.venv/bin/python -m streamlit run app.py --server.address 0.0.0.0`.
+5. Välj **Open in Browser** för port **8501** eller öppna porten från fliken **Ports**.
+
+Installationen kräver färdigbyggda Python-paket (`--only-binary=:all:`) så att saknade paket inte startar en lång kompilering. Devcontainer-konfigurationen behöver byggas i Codespaces; den byter inte Python i en redan körande container förrän ombyggnaden görs.
+
 ## Starta
 
-Python 3.12 rekommenderas. Kör från projektets rot:
+Använd Python 3.12 (den låsta miljön är inte testad med Python 3.14). Kör från projektets rot:
 
 ```sh
-python -m venv .venv
+python3.12 -m venv .venv
 .venv/bin/python -m pip install -r requirements.lock
 .venv/bin/python -m streamlit run app.py --server.address 127.0.0.1
 ```
