@@ -32,7 +32,7 @@ def import_candidates(candidates):
 if page == 'Sök kandidater':
     st.title('Hitta nästa kollega')
     st.caption('Yrkeserfarenhet, tydliga källor och mänsklig bedömning.')
-    tab_import, tab_manual, tab_search = st.tabs(['CSV & demodata', 'Manuell profil', 'Sök på webben'])
+    tab_import, tab_manual, tab_search = st.tabs(['CSV & demodata', 'Manuell profil', 'Sök LinkedIn'])
     with tab_import:
         st.subheader('Börja med ett underlag')
         st.write('Importera endast yrkesuppgifter som ni har rätt att behandla. CSV kräver name och source_url. Se README för beläggformat.')
@@ -84,26 +84,46 @@ if page == 'Sök kandidater':
             except ValueError as exc:
                 st.error(str(exc))
     with tab_search:
-        st.subheader('Upptäck professionella profilsidor')
-        st.write('Brave Search API används för länkar och sökutdrag. Inga profilsidor hämtas. Resultaten är obekräftade sidtitlar, inte verifierade personer.')
+        st.subheader('Hitta kandidater på LinkedIn')
+        st.write('Välj ort och yrkesbakgrund. Appen söker efter offentliga LinkedIn-profiler via Brave Search och sparar profilernas länkar och sökutdrag i kandidatöversikten.')
+        st.caption('Sökningen omfattar sökmotorns index, inte alla LinkedIn-medlemmar. Fullständiga profiler hämtas inte. Namn och meriter i utdragen behöver verifieras.')
+        api_key = None
+        if not os.getenv('BRAVE_SEARCH_API_KEY'):
+            st.markdown('**Första gången:** skapa en nyckel på [Brave Search API](https://api-dashboard.search.brave.com/). Välj ett abonnemang som tillåter er användning och lagring av sökresultat.')
+            api_key = st.text_input('Brave Search API-nyckel', type='password', key='brave_api_key')
+            st.caption('Nyckeln används under den här sessionen och sparas inte i kandidatdatabasen eller i projektfiler. Klistra aldrig in den i chatten.')
+        else:
+            st.success('Sök-API är konfigurerat.')
         place = st.selectbox('Geografiskt område', list(PLACES), key='search_place')
         category = st.selectbox('Yrkesbakgrund / kategori', ['Alla', 'A', 'B', 'C', 'D'])
         keywords = st.text_input('Roller och sökord')
-        experience = st.slider('Önskad erfarenhet (år)', 0, 30, (3, 15))
-        st.caption('Erfarenhet används som sökord. Sökutdrag verifierar inte antal år; filtrera dokumenterade uppgifter i översikten.')
+        st.caption('Filtrera dokumenterade erfarenhetsår efter granskning i Kandidatöversikt. Erfarenhet gissas inte från sökutdrag.')
         limit = st.number_input('Maximalt antal resultat', 1, 100, 15)
-        generated = queries(place, category, f'{keywords} {experience[0]}–{experience[1]} års erfarenhet')
+        generated = queries(place, category, keywords)
         with st.expander('Genererade frågor och synonymer'):
             st.write(generated)
         authorized = st.checkbox('Jag har kontrollerat användningsrättigheter och API-villkor för sökning och lagring av utdrag.')
-        if st.button('Sök och spara för manuell granskning', disabled=not authorized):
+        st.caption('Maximalt 30 API-anrop per sökning. Resultatet kan innehålla färre profiler än önskat; API-kostnad och kvoter beror på ert abonnemang.')
+        if st.button('Sök LinkedIn och hämta kandidater', type='primary', disabled=not authorized or not (api_key or os.getenv('BRAVE_SEARCH_API_KEY'))):
             try:
-                with st.spinner('Söker efter källor…'):
-                    results = BraveSearch().search(generated, int(limit))
+                with st.spinner('Söker efter offentliga LinkedIn-profiler…'):
+                    results = BraveSearch(api_key=api_key).search(generated, int(limit))
                     import_candidates(results)
+                    if results:
+                        st.info('Öppna Kandidatöversikt i vänstermenyn för att se profilerna. Ort och yrkesmeriter är ännu obekräftade och behöver granskas i källan.')
+                    else:
+                        st.info('Inga LinkedIn-profiler hittades. Prova färre extra sökord, annan yrkesbakgrund eller Hela Sverige.')
             except (ValueError, requests.RequestException) as exc:
                 # Avoid showing request headers or secret values.
-                st.error('Sökningen kunde inte slutföras. Kontrollera API-nyckel, kvot och nätverksåtkomst.' if isinstance(exc, requests.RequestException) else str(exc))
+                if isinstance(exc, requests.HTTPError):
+                    status_code = exc.response.status_code if exc.response is not None else None
+                    st.error({401: 'API-nyckeln godkändes inte. Kontrollera din Brave Search-nyckel.',
+                              403: 'Brave nekade åtkomst. Kontrollera att nyckeln har rätt abonnemang och åtkomst.',
+                              429: 'Brave har begränsat antalet anrop eller kvoten är slut. Kontrollera abonnemanget och försök senare.'}.get(status_code, 'Söktjänsten svarade med ett fel. Försök senare.'))
+                elif isinstance(exc, requests.RequestException):
+                    st.error('Kunde inte nå söktjänsten. Kontrollera nätverksåtkomst till api.search.brave.com och försök igen.')
+                elif isinstance(exc, ValueError):
+                    st.error('Kontrollera API-nyckeln och sökinställningarna. Söktjänstens svar kunde inte behandlas.')
 
 elif page == 'Kandidatöversikt':
     st.title('Kandidatöversikt')

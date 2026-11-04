@@ -70,11 +70,23 @@ Kategorier, i prioritetsordning:
 
 Alla matchande kategorier visas. Upptäckta söksidor får D, okända meriter och 0 % täckning oavsett sökutdrag. Utbildning, personliga egenskaper, ålder, kön och andra skyddade egenskaper påverkar inte modellen. Ödmjukhet, ambition, nyfikenhet och samarbete visas endast som intervjufrågor.
 
-## Frivillig sök-API och framtida AI
+## Automatisk kandidatsökning på LinkedIn
+
+1. Öppna **Sök kandidater → Sök LinkedIn**.
+2. Skapa en API-nyckel på [Brave Search API](https://api-dashboard.search.brave.com/). Kontrollera att abonnemanget tillåter er användning och lagring av sökresultat.
+3. Klistra in nyckeln i appens lösenordsfält. Den används bara i aktuell session och sparas inte i databasen eller projektfilerna. För en bestående konfiguration, använd miljövariabeln nedan eller Codespaces Secrets.
+4. Välj ort, yrkesbakgrund, eventuella extra sökord och maximalt antal kandidater. Bekräfta användningsrättigheterna och klicka **Sök LinkedIn och hämta kandidater**.
+5. Öppna **Kandidatöversikt**. Följ källänkarna och komplettera verifierade yrkesuppgifter i **Kandidatdetaljer**.
+
+Sökningen använder `site:linkedin.com/in/` med relaterade yrkestitlar. Endast personliga LinkedIn-profillänkar accepteras: företags- och jobbannonser samt andra domäner filtreras bort. Regionala LinkedIn-länkar normaliseras för att undvika dubbletter. Sökningen omfattar sökmotorns offentliga index och kan inte garantera alla LinkedIn-profiler. Den besöker inte LinkedIn och använder inga inloggningsrobotar.
+
+Upp till 30 API-anrop görs per klick, med en paus mellan anrop och paginering där fler resultat finns. Kostnad och kvot beror på abonnemanget. Färre profiler än önskat kan returneras. Redan sparade länkar skrivs inte över. Söktitlar och utdrag är obekräftade; ort, namn, företag, erfarenhetsår och meriter fylls inte automatiskt som verifierade uppgifter. Dessa kandidater får D och kräver granskning.
+
+## Sök-API-konfiguration och framtida AI
 
 Kopiera `.env.example` till `.env` och konfigurera `BRAVE_SEARCH_API_KEY` lokalt via en säker kanal. Sökadaptern anropar endast `https://api.search.brave.com/res/v1/web/search`, med timeout och TLS-verifiering, och hämtar aldrig LinkedIn eller andra profilsidor. I molnmiljön behöver API-domänen godkännas och en nyckel bindas till den via miljöinställningarna. Sök-API-integrationen testas med mockade svar; liveanrop kräver egen licens/nyckel och är inte verifierat utan dessa.
 
-Kontrollera att ert API-avtal uttryckligen medger aktuell användning och lagring av sökutdrag; en API-nyckel ger inte i sig rätt till all vidarebehandling. Användaren bekräftar rättigheterna före sökning. Sökresultatens sidtitlar sparas som obekräftade profiler, inte som verifierade namn. Geografiska synonymer och relaterade roller genererar frågor. Erfarenhetsår i sökfrågan är endast en söksignal; dessa tilldelas aldrig en profil som fakta.
+Kontrollera att ert API-avtal uttryckligen medger aktuell användning och lagring av sökutdrag; en API-nyckel ger inte i sig rätt till all vidarebehandling. Användaren bekräftar rättigheterna före sökning. Sökresultatens sidtitlar sparas som obekräftade profiler, inte som verifierade namn. Geografiska synonymer och relaterade roller genererar frågor. Erfarenhetsår används inte som obligatoriska sökord eftersom profiler sällan innehåller ett uppdaterat totalantal år. Filtrera istället verifierad erfarenhet i översikten efter granskning.
 
 `SearchProvider` är ett separat gränssnitt för ett framtida licensierat rekryterings-API. `OptionalAnalyzer` är en ej aktiverad anslutningspunkt för framtida AI; ingen data skickas till AI i MVP:n. En framtida implementation måste ha separat uttryckligt godkännande av datadelning, rätt att skicka underlaget, avtal med leverantören och källspårbara resultat som granskas manuellt.
 

@@ -5,7 +5,7 @@ from candidate_finder.model import Candidate, UNKNOWN
 from candidate_finder.analysis import analyze, categories
 from candidate_finder.storage import Store
 from candidate_finder.ingestion import read_csv, export_frame, excel_bytes
-from candidate_finder.search import BraveSearch, queries
+from candidate_finder.search import BraveSearch, queries, linkedin_profile_url
 
 
 def profile(**kwargs):
@@ -113,9 +113,64 @@ def test_search_adapter_deduplicates_and_marks_unknown(monkeypatch):
     class Response:
         def raise_for_status(self): pass
         def json(self):
-            return {'web': {'results': [{'title': 'Fiktiv profil', 'url': 'https://example.com/person', 'description': 'En kort beskrivning'}]}}
+            return {'web': {'results': [{'title': 'Fiktiv profil', 'url': 'https://se.linkedin.com/in/fiktiv-person?tracking=1', 'description': '<b>En kort</b> beskrivning'}]}}
     monkeypatch.setenv('BRAVE_SEARCH_API_KEY', 'test-key')
     monkeypatch.setattr('candidate_finder.search.requests.get', lambda *args, **kwargs: Response())
+    monkeypatch.setattr('candidate_finder.search.time.sleep', lambda _: None)
     result = BraveSearch().search(['one', 'two'], 5)
     assert len(result) == 1 and result[0].discovery
     assert analyze(result[0])['coverage'] == 0
+
+
+@pytest.mark.parametrize('url', [
+    'https://linkedin.com/company/example', 'https://linkedin.com/jobs/view/1',
+    'https://linkedin.com.evil.example/in/person', 'https://notlinkedin.com/in/person',
+    'https://example.com/in/person', 'https://linkedin.com/in/person/detail/contact-info/',
+    'https://user:pass@linkedin.com/in/person', 'javascript:alert(1)',
+])
+def test_only_personal_linkedin_profiles(url):
+    with pytest.raises(ValueError):
+        linkedin_profile_url(url)
+
+
+def test_regional_linkedin_urls_normalized():
+    assert linkedin_profile_url('https://se.linkedin.com/in/example/?trk=123#about') == 'https://www.linkedin.com/in/example'
+    assert all(q.startswith('site:linkedin.com/in/') for q in queries('Stockholm'))
+
+
+def test_search_paginates_filters_and_limits(monkeypatch):
+    calls = []
+    class Response:
+        def __init__(self, offset): self.offset = offset
+        def raise_for_status(self): pass
+        def json(self):
+            return {'query': {'more_results_available': True}, 'web': {'results': [
+                {'title': 'Company', 'url': 'https://www.linkedin.com/company/example'},
+                {'title': 'Wrong domain', 'url': 'https://example.com/profile'},
+                {'title': 'Fiktiv profil', 'url': f'https://www.linkedin.com/in/person-{self.offset}', 'description': '<b>Obekräftat</b>'}
+            ]}}
+    def get(url, **kwargs):
+        assert url == 'https://api.search.brave.com/res/v1/web/search'
+        assert kwargs['headers']['X-Subscription-Token'] == 'session-test-key'
+        calls.append(kwargs['params'])
+        return Response(kwargs['params']['offset'])
+    monkeypatch.setattr('candidate_finder.search.requests.get', get)
+    monkeypatch.setattr('candidate_finder.search.time.sleep', lambda _: None)
+    result = BraveSearch(api_key='session-test-key').search(['query'], 2)
+    assert len(result) == 2 and len(calls) == 2
+    assert result[0].description == 'Obekräftat'
+    assert all(c.discovery and c.years is None and not c.evidence for c in result)
+
+
+def test_search_request_budget(monkeypatch):
+    calls = []
+    class Response:
+        def raise_for_status(self): pass
+        def json(self): return {'web': {'results': []}}
+    def get(*args, **kwargs):
+        calls.append(kwargs)
+        return Response()
+    monkeypatch.setattr('candidate_finder.search.requests.get', get)
+    monkeypatch.setattr('candidate_finder.search.time.sleep', lambda _: None)
+    assert not BraveSearch(api_key='test').search([str(n) for n in range(50)], 100)
+    assert len(calls) == 30
